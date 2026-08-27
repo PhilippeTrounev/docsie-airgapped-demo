@@ -7,8 +7,9 @@ This repository demonstrates the full supported flow for turning
 2. Queue an asynchronous air-gapped build on Docsie staging.
 3. Poll the Celery-backed job until it completes.
 4. Download and inspect the private ZIP artifact.
-5. Build and start the included nginx container on an internal-only Docker network.
-6. Verify the reader, exported API snapshot, search index, and blocked outbound access.
+5. Apply narrowly scoped compatibility fixes for older staging artifacts.
+6. Build and start the included nginx container on an internal-only Docker network.
+7. Verify the reader, local search UI/index, and blocked outbound access.
 
 The public portal embeds deployment ID `deployment_EFk3AIigMh599HRk6`. The staging database
 contains the same deployment ID in the `docsie` organization, so the demo exercises the
@@ -63,6 +64,15 @@ The staging image used on August 27, 2026 writes the reader options to the legac
 `window.Docsie.override.config` shape. Once the corresponding server packager fix is deployed,
 the compatibility step becomes a no-op.
 
+The same staging artifact contains a headless offline search engine but does not mount the
+reader's search control. The demo vendors `assets/docsie-search.js`, a modular reader plugin
+registered at `nav-plugin-bar`, when that UI marker is absent. It provides a visible search
+launcher, an accessible results dialog, `Ctrl/Cmd+K`, and Docsie-native result navigation while
+continuing to read only `/search/index.json`. This compatibility replacement also becomes a
+no-op after the updated server plugin is deployed. The package nginx configuration revalidates
+this generated plugin instead of treating it as a permanently immutable reader asset, so a
+later package upgrade cannot leave visitors running a stale search bundle.
+
 ## Postman
 
 Import both files from `postman/`:
@@ -83,7 +93,7 @@ base image through the customer's secure media process, then build or import the
 that environment. The included Helm chart can deploy the resulting image to an on-prem cluster.
 
 Online-only plugins such as feedback, recorder, AI agents, and secure-file URL signing are not
-included. Search is replaced with the packaged client-side index.
+included. Search is implemented by the packaged client-side plugin and index.
 
 ## Cleanup
 
