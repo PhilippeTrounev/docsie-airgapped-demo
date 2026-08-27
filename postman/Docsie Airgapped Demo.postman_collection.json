@@ -1,0 +1,81 @@
+{
+  "info": {
+    "_postman_id": "75318df3-95d1-4856-a469-c71827e94ac0",
+    "name": "Docsie Airgapped Demo",
+    "description": "Queue, inspect, and download an offline Docsie portal build.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {"key": "key", "value": "Authorization", "type": "string"},
+      {"key": "value", "value": "Api-Key {{api_key}}", "type": "string"},
+      {"key": "in", "value": "header", "type": "string"}
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Create airgapped build",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Build queued', function () { pm.response.to.have.status(201); });",
+              "const body = pm.response.json();",
+              "pm.environment.set('build_id', body.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"deployment_id\": \"{{deployment_id}}\",\n  \"deployment_type\": \"portal\",\n  \"include_docker\": true,\n  \"include_helm\": true,\n  \"plugins\": [\"codehelpers\", \"lightbox\", \"meta\", \"scrollspy\", \"toprint\", \"darkmode\"]\n}"
+        },
+        "url": "{{base_url}}/api_v2/003/airgapped_builds/"
+      }
+    },
+    {
+      "name": "2. Get build status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api_v2/003/airgapped_builds/{{build_id}}/"
+      }
+    },
+    {
+      "name": "3. Get private download URL",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Download URL issued', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.environment.set('download_url', body.download_url);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/api_v2/003/airgapped_builds/{{build_id}}/download/"
+      }
+    },
+    {
+      "name": "4. Download ZIP",
+      "auth": {"type": "noauth"},
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{download_url}}"
+      }
+    }
+  ]
+}
