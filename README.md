@@ -69,11 +69,14 @@ reader's search control. The demo vendors `assets/docsie-search.js`, a modular r
 registered at `nav-plugin-bar`, when that UI marker is absent. It provides a visible search
 launcher, an accessible results dialog, `Ctrl/Cmd+K`, and Docsie-native result navigation while
 continuing to read only `/search/index.json`. If an encapsulated reader theme does not give the
-sidebar launcher a visible box, the plugin exposes the same control at the top-right of the
-portal. This compatibility replacement also becomes a no-op after the updated server plugin is
-deployed. The package nginx configuration revalidates this generated plugin instead of treating
-it as a permanently immutable reader asset, so a later package upgrade cannot leave visitors
-running a stale search bundle.
+sidebar launcher a visible box, the plugin still exposes the same control at the top-right of
+the portal. The top-right control is always mounted so it remains discoverable across
+encapsulated reader themes. This compatibility replacement also becomes a no-op after the
+updated server plugin is deployed. The package nginx configuration revalidates this generated
+plugin instead of treating it as a permanently immutable reader asset, so a later package
+upgrade cannot leave visitors running a stale search bundle. The compatibility stage also
+derives a cache token from the search bundle, applies it to the reader script URL, and replaces
+the reader's internal plugin-loader token so an existing browser must load the upgraded code.
 
 ## Postman
 

@@ -72,6 +72,53 @@ else
   echo "Installed the modular offline search UI plugin."
 fi
 
+python3 - "${index_path}" "${site_dir}/lib/service.js" "${plugin_path}" <<'PY'
+from hashlib import sha256
+from pathlib import Path
+import re
+import sys
+
+index_path = Path(sys.argv[1])
+service_path = Path(sys.argv[2])
+plugin_path = Path(sys.argv[3])
+
+if not service_path.is_file():
+    raise SystemExit(f"Package is missing reader service bundle: {service_path}")
+
+cache_token = sha256(
+    plugin_path.read_bytes() + b"\0docsie-airgap-reader-cache-v2"
+).hexdigest()[:40]
+
+service_text = service_path.read_text()
+service_text, service_base_count = re.subn(
+    r'([A-Za-z_$][A-Za-z0-9_$]*)\.src\.replace\("/service\.js",""\)',
+    r'\1.src.replace("/service.js","").split("?")[0]',
+    service_text,
+)
+if service_base_count == 0:
+    raise SystemExit("Could not make the reader asset base ignore the cache query.")
+service_text, reader_token_count = re.subn(
+    r'(?<=concat\(")[0-9a-f]{40}(?="\))',
+    cache_token,
+    service_text,
+)
+if reader_token_count == 0:
+    raise SystemExit("Could not cache-bust the reader plugin loader token.")
+service_path.write_text(service_text)
+
+index_text = index_path.read_text()
+index_text, service_src_count = re.subn(
+    r'src="/lib/service\.js(?:\?q=[^"]*)?"',
+    f'src="/lib/service.js?q={cache_token}"',
+    index_text,
+)
+if service_src_count != 1:
+    raise SystemExit("Could not cache-bust the reader service script URL.")
+index_path.write_text(index_text)
+
+print(f"Reader and search plugin cache token: {cache_token[:12]}")
+PY
+
 python3 - "${site_dir}/server.conf" "${site_dir}/nginx.conf" <<'PY'
 from pathlib import Path
 import sys

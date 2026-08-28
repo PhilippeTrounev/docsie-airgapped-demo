@@ -38,8 +38,8 @@
     '.docsie-offline-search-launcher input{background:transparent;border:0;box-sizing:border-box;color:#1f2328;font:inherit;min-width:0;outline:0;padding:8px 0;width:100%;}',
     '.docsie-offline-search-launcher input::placeholder{color:#667085;}',
     '.docsie-offline-search-shortcut{background:#f4f6f8;border:1px solid #d7dce2;border-radius:4px;color:#57606a;font:11px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:1px 5px;white-space:nowrap;}',
-    '.docsie-offline-search-global-shell{box-sizing:border-box;position:fixed;right:20px;top:16px;width:min(320px,calc(100vw - 40px));z-index:2147482000;}',
-    '.docsie-offline-search-global-shell .docsie-offline-search-launcher{box-shadow:0 8px 28px rgba(15,23,42,.2);}',
+    '.docsie-offline-search-global-shell{background:#fff;border:2px solid #3978f6;border-radius:10px;box-sizing:border-box;position:fixed;right:20px;top:16px;width:min(320px,calc(100vw - 40px));z-index:2147483646;}',
+    '.docsie-offline-search-global-shell .docsie-offline-search-launcher{border:0;box-shadow:0 8px 28px rgba(15,23,42,.28);}',
     '.docsie-offline-search-modal[hidden]{display:none!important;}',
     '.docsie-offline-search-modal{align-items:flex-start;background:rgba(15,23,42,.55);box-sizing:border-box;display:flex;inset:0;justify-content:center;overflow:auto;padding:8vh 16px 32px;position:fixed;z-index:2147483000;}',
     '.docsie-offline-search-dialog{background:#fff;border-radius:12px;box-shadow:0 24px 80px rgba(15,23,42,.35);box-sizing:border-box;color:#1f2328;display:flex;flex-direction:column;max-height:84vh;max-width:760px;overflow:hidden;width:100%;}',
@@ -310,9 +310,8 @@
     ui.launcherInput = createLauncher(container);
 
     createModal();
+    ensureGlobalLauncher();
     loadIndex().then(setLauncherState);
-    window.setTimeout(ensureVisibleLauncher, 250);
-    window.setTimeout(ensureVisibleLauncher, 1500);
   }
 
   function createLauncher(container) {
@@ -347,11 +346,7 @@
     return input;
   }
 
-  function ensureVisibleLauncher() {
-    if (isVisiblySized(ui.launcherInput)) {
-      removeFallbackLauncher();
-      return;
-    }
+  function ensureGlobalLauncher() {
     if (ui.fallbackLauncher) return;
 
     var fallback = createElement(
@@ -363,26 +358,6 @@
     ui.fallbackLauncher = fallback;
     ui.fallbackInput = createLauncher(fallback);
     setLauncherState();
-  }
-
-  function isVisiblySized(element) {
-    if (!element || !element.isConnected) return false;
-    var style = window.getComputedStyle(element);
-    var rect = element.getBoundingClientRect();
-    return style.display !== 'none' &&
-      style.visibility !== 'hidden' &&
-      Number(style.opacity || 1) !== 0 &&
-      rect.width >= 120 &&
-      rect.height >= 30 &&
-      rect.bottom > 0 &&
-      rect.top < window.innerHeight;
-  }
-
-  function removeFallbackLauncher() {
-    if (!ui.fallbackLauncher) return;
-    ui.fallbackLauncher.remove();
-    ui.fallbackLauncher = null;
-    ui.fallbackInput = null;
   }
 
   function setLauncherState() {
