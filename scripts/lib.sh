@@ -38,7 +38,7 @@ require_value DOCSIE_API_KEY
 
 ARTIFACT_DIR="${DOCSIE_ARTIFACT_DIR:-${REPO_ROOT}/.artifacts}"
 BUILD_ID_FILE="${ARTIFACT_DIR}/build-id"
-PACKAGE_FILE="${ARTIFACT_DIR}/airgapped-build.zip"
+PACKAGE_FILE="${AIRGAP_PACKAGE_FILE:-${ARTIFACT_DIR}/airgapped-build.zip}"
 SITE_DIR="${ARTIFACT_DIR}/site"
 
 mkdir -p "${ARTIFACT_DIR}"

@@ -86,8 +86,24 @@ Import both files from `postman/`:
 - `Docsie Airgapped Staging.postman_environment.json`
 
 Set the environment's secret `api_key` value locally. The create request captures `build_id`;
-the status and download requests reuse it. Postman shows the API choreography, while the shell
-scripts handle binary download, Docker startup, and offline verification.
+the status and download requests reuse it. The collection also contains a no-auth local folder
+that verifies the portal, manifest, and search index after deployment. See
+[`POSTMAN_WALKTHROUGH.md`](POSTMAN_WALKTHROUGH.md) for the complete click-by-click flow.
+
+## Recording and customer handoff
+
+[`RECORDING_WALKTHROUGH.md`](RECORDING_WALKTHROUGH.md) provides a 6-8 minute demo script and
+the exact claims supported by the verification. After the export ZIP exists, create a
+share-ready synthetic customer package with:
+
+```bash
+./scripts/create-share-package.sh Eclypsium
+```
+
+The generated ZIP and SHA-256 sidecar are written to `.artifacts/share/`. The package adds the
+Postman examples, walkthroughs, and a customer-demo manifest to the prepared offline portal.
+It deliberately contains the public Docsie help portal rather than private Eclypsium content,
+and contains no Docsie API key or short-lived signed URL.
 
 ## What “air-gapped” means in this demo
 
