@@ -21,6 +21,8 @@
   var ui = {
     container: null,
     launcherInput: null,
+    fallbackLauncher: null,
+    fallbackInput: null,
     modal: null,
     modalInput: null,
     results: null,
@@ -36,6 +38,8 @@
     '.docsie-offline-search-launcher input{background:transparent;border:0;box-sizing:border-box;color:#1f2328;font:inherit;min-width:0;outline:0;padding:8px 0;width:100%;}',
     '.docsie-offline-search-launcher input::placeholder{color:#667085;}',
     '.docsie-offline-search-shortcut{background:#f4f6f8;border:1px solid #d7dce2;border-radius:4px;color:#57606a;font:11px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:1px 5px;white-space:nowrap;}',
+    '.docsie-offline-search-global-shell{box-sizing:border-box;position:fixed;right:20px;top:16px;width:min(320px,calc(100vw - 40px));z-index:2147482000;}',
+    '.docsie-offline-search-global-shell .docsie-offline-search-launcher{box-shadow:0 8px 28px rgba(15,23,42,.2);}',
     '.docsie-offline-search-modal[hidden]{display:none!important;}',
     '.docsie-offline-search-modal{align-items:flex-start;background:rgba(15,23,42,.55);box-sizing:border-box;display:flex;inset:0;justify-content:center;overflow:auto;padding:8vh 16px 32px;position:fixed;z-index:2147483000;}',
     '.docsie-offline-search-dialog{background:#fff;border-radius:12px;box-shadow:0 24px 80px rgba(15,23,42,.35);box-sizing:border-box;color:#1f2328;display:flex;flex-direction:column;max-height:84vh;max-width:760px;overflow:hidden;width:100%;}',
@@ -53,7 +57,8 @@
     '.docsie-offline-search-result-context{color:#667085;display:block;font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin-top:3px;}',
     '.docsie-offline-search-result-snippet{color:#374151;display:block;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin-top:6px;}',
     '.docsie-offline-search-empty{color:#667085;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:28px 18px;text-align:center;}',
-    '@media(max-width:640px){.docsie-offline-search-modal{padding:0}.docsie-offline-search-dialog{border-radius:0;max-height:100vh;min-height:100vh}.docsie-offline-search-shortcut{display:none}}',
+    '@media(max-width:640px){.docsie-offline-search-global-shell{left:12px;right:12px;top:12px;width:auto}.docsie-offline-search-modal{padding:0}.docsie-offline-search-dialog{border-radius:0;max-height:100vh;min-height:100vh}.docsie-offline-search-shortcut{display:none}}',
+    '@media print{.docsie-offline-search-global-shell{display:none!important}}',
     '@media(prefers-color-scheme:dark){.docsie-offline-search-launcher,.docsie-offline-search-dialog{background:#171a21;color:#f3f4f6}.docsie-offline-search-launcher{border-color:#3f4652}.docsie-offline-search-launcher input,.docsie-offline-search-input{color:#f3f4f6}.docsie-offline-search-header,.docsie-offline-search-result+.docsie-offline-search-result{border-color:#343b46}.docsie-offline-search-result a:hover,.docsie-offline-search-result a:focus{background:#202a3a}.docsie-offline-search-result-title{color:#8ab4f8}.docsie-offline-search-result-snippet{color:#d1d5db}}'
   ].join('\n');
 
@@ -302,6 +307,15 @@
     container.setAttribute('data-docsie-offline-search-mounted', 'true');
     ui.container = container;
 
+    ui.launcherInput = createLauncher(container);
+
+    createModal();
+    loadIndex().then(setLauncherState);
+    window.setTimeout(ensureVisibleLauncher, 250);
+    window.setTimeout(ensureVisibleLauncher, 1500);
+  }
+
+  function createLauncher(container) {
     var launcher = createElement('div', 'docsie-offline-search-launcher');
     launcher.setAttribute('role', 'search');
 
@@ -324,25 +338,70 @@
     launcher.appendChild(input);
     launcher.appendChild(shortcut);
     container.appendChild(launcher);
-    ui.launcherInput = input;
-
-    createModal();
     input.addEventListener('focus', function() {
       openModal(input.value);
     });
     input.addEventListener('click', function() {
       openModal(input.value);
     });
+    return input;
+  }
 
-    loadIndex().then(setLauncherState);
+  function ensureVisibleLauncher() {
+    if (isVisiblySized(ui.launcherInput)) {
+      removeFallbackLauncher();
+      return;
+    }
+    if (ui.fallbackLauncher) return;
+
+    var fallback = createElement(
+      'div',
+      'docsie-offline-search-global-shell docsie-print-hidden'
+    );
+    fallback.setAttribute('data-docsie-offline-search-fallback', 'true');
+    document.body.appendChild(fallback);
+    ui.fallbackLauncher = fallback;
+    ui.fallbackInput = createLauncher(fallback);
+    setLauncherState();
+  }
+
+  function isVisiblySized(element) {
+    if (!element || !element.isConnected) return false;
+    var style = window.getComputedStyle(element);
+    var rect = element.getBoundingClientRect();
+    return style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      Number(style.opacity || 1) !== 0 &&
+      rect.width >= 120 &&
+      rect.height >= 30 &&
+      rect.bottom > 0 &&
+      rect.top < window.innerHeight;
+  }
+
+  function removeFallbackLauncher() {
+    if (!ui.fallbackLauncher) return;
+    ui.fallbackLauncher.remove();
+    ui.fallbackLauncher = null;
+    ui.fallbackInput = null;
   }
 
   function setLauncherState() {
-    if (!ui.launcherInput) return;
-    ui.launcherInput.disabled = !isLoaded;
-    ui.launcherInput.placeholder = isLoaded
-      ? 'Search offline documentation\u2026'
-      : 'Offline search unavailable';
+    launcherInputs().forEach(function(input) {
+      input.disabled = !isLoaded;
+      input.placeholder = isLoaded
+        ? 'Search offline documentation\u2026'
+        : 'Offline search unavailable';
+    });
+  }
+
+  function launcherInputs() {
+    return [ui.launcherInput, ui.fallbackInput].filter(Boolean);
+  }
+
+  function setLauncherValues(value) {
+    launcherInputs().forEach(function(input) {
+      input.value = value;
+    });
   }
 
   function createModal() {
@@ -399,7 +458,7 @@
     ui.status = status;
 
     input.addEventListener('input', function() {
-      if (ui.launcherInput) ui.launcherInput.value = input.value;
+      setLauncherValues(input.value);
       renderResults(input.value);
     });
     input.addEventListener('keydown', function(event) {
@@ -442,7 +501,7 @@
     if (!ui.modal) return;
     ui.modal.hidden = false;
     ui.modalInput.value = term || '';
-    if (ui.launcherInput) ui.launcherInput.value = term || '';
+    setLauncherValues(term || '');
     renderResults(ui.modalInput.value);
     window.setTimeout(function() {
       ui.modalInput.focus();
@@ -454,7 +513,7 @@
     if (!ui.modal) return;
     ui.modal.hidden = true;
     ui.firstResultUrl = null;
-    if (ui.launcherInput) ui.launcherInput.blur();
+    launcherInputs().forEach(function(input) { input.blur(); });
   }
 
   function renderResults(query) {

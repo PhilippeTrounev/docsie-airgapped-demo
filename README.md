@@ -68,10 +68,12 @@ The same staging artifact contains a headless offline search engine but does not
 reader's search control. The demo vendors `assets/docsie-search.js`, a modular reader plugin
 registered at `nav-plugin-bar`, when that UI marker is absent. It provides a visible search
 launcher, an accessible results dialog, `Ctrl/Cmd+K`, and Docsie-native result navigation while
-continuing to read only `/search/index.json`. This compatibility replacement also becomes a
-no-op after the updated server plugin is deployed. The package nginx configuration revalidates
-this generated plugin instead of treating it as a permanently immutable reader asset, so a
-later package upgrade cannot leave visitors running a stale search bundle.
+continuing to read only `/search/index.json`. If an encapsulated reader theme does not give the
+sidebar launcher a visible box, the plugin exposes the same control at the top-right of the
+portal. This compatibility replacement also becomes a no-op after the updated server plugin is
+deployed. The package nginx configuration revalidates this generated plugin instead of treating
+it as a permanently immutable reader asset, so a later package upgrade cannot leave visitors
+running a stale search bundle.
 
 ## Postman
 
