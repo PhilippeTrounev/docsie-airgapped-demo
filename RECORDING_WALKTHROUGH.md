@@ -1,75 +1,92 @@
-# Recording walkthrough: Docsie air-gapped portal demo
+# Recording walkthrough: production Docsie air-gapped export
 
-Target length: 6-8 minutes.
+Target length: 6–8 minutes.
 
 ## Before recording
 
-1. Import the Postman collection and environment.
-2. Set the secret API key as a Postman current value, then close the environment editor.
-3. Ensure Docker is running and port 8088 is free.
-4. Keep the repository, Postman, terminal, and browser ready in separate windows.
-5. Do not open `.env`, Postman secret values, `download.json`, or a signed download URL on camera.
+1. Import the Postman collection and production environment.
+2. Set `api_key` as a local/current secret value, then close the editor.
+3. Keep Postman, this README, a terminal, and the browser ready.
+4. Keep `.env`, signed URLs, and `.artifacts/` out of the captured frame.
+5. Decide whether to create a fresh build or reuse the latest completed one.
 
-## Suggested video flow
+## Suggested video
 
-### 0:00 - Show the outcome
+### 0:00 — Show the finished offline portal
 
-Open <http://127.0.0.1:8088/>, search for `api key`, and open a result. Explain
-that the portal, article data, assets, and search index are served locally.
+Open <http://127.0.0.1:8091/>, search for `API key`, and open an article.
+Explain that the reader, navigation, images, API snapshots, and search index are
+being served from the downloaded ZIP.
 
-### 0:45 - Explain the boundary
+### 0:45 — Explain the transfer boundary
 
-Show the repository README. The Docsie build service needs connectivity while it
-creates the snapshot. The resulting ZIP is what crosses the customer's secure
-transfer boundary; its runtime needs no internet connection.
+Show this repository's README. Docsie needs connectivity while generating and
+downloading the snapshot. The ZIP crosses the customer's approved transfer
+boundary. Its normal runtime needs no Docsie connection.
 
-### 1:30 - Create the export in Postman
+### 1:30 — Obtain the latest build in Postman
 
-Run requests 1-3 in **Cloud build API**. Point out the asynchronous build ID,
-status polling, and short-lived download URL. Use **Send and Download** for request 4.
+For the short path, run **0. Select latest completed build**, then **3. Get
+private download URL** and **4. Download ZIP**.
 
-### 3:00 - Deploy locally
+For the full path, run **1. Create fresh air-gapped build**, then repeatedly run
+**2. Poll build status** until it is complete. Continue with requests 3 and 4.
+
+Point out that the create call returns immediately, and the durable build record
+can be recovered later through the build-list endpoint.
+
+### 3:00 — Explain webhook notification
+
+Show the **Webhook reference** examples. A configured
+`airgappedbuild.updated` webhook fires only at `complete` or `failed`; the
+receiver checks `target.status`. Polling is still available when the customer
+does not expose an inbound webhook endpoint.
+
+Do not claim that this model event is signed or retried. See `WEBHOOKS.md`.
+
+### 3:45 — Run the exact Docsie-generated package
 
 ```bash
 ./scripts/deploy-offline.sh
 ./scripts/verify-offline.sh
 ```
 
-Call out the internal-only Docker workload, separate localhost gateway, local
-manifest/search checks, and blocked outbound request.
+Show that verification checks the package checksums, reader, deployment API
+snapshot, and local search index. Mention the generated Dockerfile and Helm
+chart, but do not claim they were deployed unless you actually run them.
 
-### 4:15 - Show local proof
+### 5:00 — Local proof
 
-Run the **Local offline proof** Postman folder. Then return to the browser and
-show search, result count, and article navigation.
+Run **Local offline proof** in Postman. Return to the browser, search for a
+second phrase, and navigate to another result.
 
-### 5:15 - Show the customer handoff
+### 6:00 — Update story
+
+Open the generated package README and show:
 
 ```bash
-./scripts/create-share-package.sh Eclypsium
+bash update.sh
+bash update.sh --download-only
+bash update.sh --rollback
 ```
 
-The generated artifact is an Eclypsium-labeled synthetic demo package. It
-contains the public Docsie help portal, deployment files, Postman examples, a
-manifest, and recording notes. It contains no API key or signed URL.
+Explain that an update is a complete replacement export authorized through
+Docsie OAuth. Normal serving remains offline, and no update runs automatically.
 
-Show the active Docsie File Share and download the shared ZIP once to demonstrate
-that the recipient path works.
+### 7:00 — Close
 
-### 6:15 - Close
+Show the public GitHub repository. The repository contains only reusable
+scripts, Postman configuration, and documentation. API keys, signed URLs,
+customer documentation, and generated ZIPs stay outside Git.
 
-Show the GitHub repository structure and explain that production use replaces
-the demo deployment ID, transfers the ZIP and approved base image through the
-customer's secure media process, and deploys Docker or Helm inside the air gap.
+## Claims supported by the current production proof
 
-## Claims supported by this demo
+- The current Docsie Help deployment can be exported from production.
+- The generated ZIP runs without compatibility rewriting.
+- The packaged verifier checks 2,136 files for the observed production build.
+- The observed build exposed 1,081 local search documents and zero failed assets.
+- Browser search and article navigation work against the local package.
 
-- The selected public portal can be exported through the Docsie API.
-- The package contains reader assets, API-shaped content, Docker/nginx, Helm,
-  and a local search index.
-- The provided runtime serves the portal with the documentation workload on an
-  internal Docker network and blocks its outbound request.
-- Search and navigation work from the packaged index and content.
-
-Do not claim that this synthetic artifact contains Eclypsium production data or
-that every online-only Docsie integration works without connectivity.
+Those counts describe the verified build and may change as the public
+documentation changes. Docker/Helm deployment and a live OAuth update are not
+part of that specific proof unless recorded separately.

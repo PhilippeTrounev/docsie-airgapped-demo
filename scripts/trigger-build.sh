@@ -7,6 +7,9 @@ source "${SCRIPT_DIR}/lib.sh"
 
 require_command curl
 require_command jq
+require_value DOCSIE_BASE_URL
+require_value DOCSIE_DEPLOYMENT_ID
+require_value DOCSIE_DEPLOYMENT_TYPE
 
 plugins_json="${DOCSIE_PLUGINS_JSON:-[]}"
 if ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"${plugins_json}" >/dev/null; then

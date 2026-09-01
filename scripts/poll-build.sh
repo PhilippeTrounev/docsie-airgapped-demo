@@ -7,6 +7,7 @@ source "${SCRIPT_DIR}/lib.sh"
 
 require_command curl
 require_command jq
+require_value DOCSIE_BASE_URL
 
 build_id="$(read_build_id)"
 interval="${AIRGAP_POLL_INTERVAL_SECONDS:-5}"
@@ -31,6 +32,12 @@ while (( SECONDS < deadline )); do
       ;;
     failed)
       jq '{id, status, error_message}' "${ARTIFACT_DIR}/status.json" >&2
+      exit 1
+      ;;
+    pending|extracting|packaging)
+      ;;
+    *)
+      echo "Build ${build_id} returned unknown status: ${status}" >&2
       exit 1
       ;;
   esac

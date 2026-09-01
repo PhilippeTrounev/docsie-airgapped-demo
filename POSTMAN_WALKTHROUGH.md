@@ -1,78 +1,98 @@
 # Postman walkthrough
 
-This collection shows the API choreography for exporting a Docsie portal and
-then proves that the result is served locally. It does not upload documentation,
-create an API key, or send the key anywhere except the selected Docsie API host.
+This collection demonstrates both production paths:
+
+- reuse the newest completed Docsie Help build for a short recording; or
+- create a fresh asynchronous build, poll it, and download it.
+
+It then verifies the extracted package through localhost. The collection does
+not create an API key or store one in the repository.
 
 ## 1. Import and configure
 
-Import both files from `postman/` into Postman:
+Import:
 
-- `Docsie Airgapped Demo.postman_collection.json`
-- `Docsie Airgapped Staging.postman_environment.json`
+- `postman/Docsie Airgapped Demo.postman_collection.json`
+- `postman/Docsie Airgapped Production.postman_environment.json`
 
-Select the **Docsie Airgapped Staging** environment. Open its variables and set
-only the **Current value** of `api_key`. Keep the shared/initial value empty and
-do not show the key while recording.
-
-The remaining preconfigured values are:
+Select **Docsie Airgapped Production**. Set only the local/current value of
+`api_key`; leave its shared value empty. Close the environment editor before
+recording.
 
 | Variable | Purpose |
 | --- | --- |
-| `base_url` | Docsie API host used to create the export |
-| `deployment_id` | Public help portal deployment to snapshot |
-| `build_id` | Captured automatically by request 1 |
-| `download_url` | Short-lived URL captured by request 3 |
-| `local_url` | Isolated portal address after local deployment |
+| `base_url` | Production External API host |
+| `deployment_id` | Public Docsie Help portal to export |
+| `api_key` | Secret organization API key; never shared |
+| `build_id` | Captured from create or latest-build selection |
+| `download_url` | One-hour signed URL; never show on camera |
+| `local_url` | Extracted portal address |
 
-## 2. Build the export
+## 2A. Short recording: select the newest completed build
 
-Open **Cloud build API** and run the requests in order.
+Run **0. Select latest completed build**. The API returns builds newest first;
+the test script selects the first `complete` build for `deployment_id` and saves
+its ID.
 
-1. **Create air-gapped build** sends the deployment ID, requests Docker and Helm
-   assets, and records the returned `build_id`.
-2. **Poll build status** shows the Celery-backed job moving through `pending` or
-   `processing` to `complete`. In the request builder, click **Send** again until
-   complete. The folder's Collection Runner loops every five seconds for up to
-   30 minutes.
-3. **Get private download URL** obtains a short-lived URL and saves it as a
-   secret environment value.
-4. **Download ZIP** uses no API-key header. In Postman desktop, use
-   **Send and Download** and save it as `.artifacts/airgapped-build.zip`.
+Continue with **3. Get private download URL** and **4. Download ZIP**.
 
-The split download step is deliberate: the stable API endpoint is authenticated,
-while the returned object-storage URL is temporary and should not be committed.
+## 2B. Full recording: create a fresh build
 
-## 3. Deploy inside the isolated runtime
+Run these requests in order:
 
-From the repository root:
+1. **Create fresh air-gapped build** queues the production Celery job and saves
+   `build_id`.
+2. **Poll build status** shows `pending`, `extracting`, `packaging`, then
+   `complete` or `failed`. In the request builder, send it again until terminal.
+   The Collection Runner loops every five seconds for at most 30 minutes.
+3. **Get private download URL** requests a temporary signed URL.
+4. **Download ZIP** uses no Docsie API header. In Postman Desktop choose
+   **Send and Download**, saving it as `.artifacts/airgapped-build.zip`.
+
+The API key is sent only to `https://app.docsie.io/api_v2/003/`. The signed
+object-storage download deliberately uses `No Auth`.
+
+## 3. Start the generated package
+
+If Postman saved the ZIP to `.artifacts/airgapped-build.zip`, run:
 
 ```bash
 ./scripts/deploy-offline.sh
 ./scripts/verify-offline.sh
 ```
 
-The workload container joins only an internal Docker network. A separate nginx
-gateway publishes `127.0.0.1:8088` and acts like an on-prem ingress controller.
-The verification script checks the manifest, API-shaped content, local search
-index, Docker network isolation, and a blocked request to `app.docsie.io`.
+The repository extracts the ZIP and delegates to the generated `run.sh` and
+`verify.sh`. No compatibility patch is applied to the production artifact.
 
-## 4. Verify with Postman and the browser
+## 4. Prove the offline result
 
-Run the **Local offline proof** folder. Its requests have `No Auth`, so the
-Docsie API key never goes to localhost. The tests verify:
+Run the **Local offline proof** folder. These requests use `No Auth` and verify:
 
-- the page declares offline mode;
-- the manifest matches the requested deployment;
+- the reader declares offline mode;
+- the manifest matches the Docsie Help deployment;
+- the package exposes API-shaped deployment JSON;
 - the local search index contains documents.
 
-Open <http://127.0.0.1:8088/> and search for `api key`. The result list and
-article navigation are backed only by `/search/index.json` and packaged content.
+Open <http://127.0.0.1:8091/>, search for `API key`, and open a result. Port 8091
+keeps this recording separate from cached assets left by older port-8088 demos.
 
-## 5. Recording safety
+## 5. Explain the webhook
 
-- Hide the Postman environment values before entering the API key.
-- Never copy the `download_url` into the video; it is a temporary signed URL.
-- Use the generated Eclypsium demo package only as a synthetic customer handoff.
-  It contains the public Docsie help portal, not private Eclypsium documentation.
-- Run `./scripts/cleanup.sh` when the demo is finished.
+Open the **Webhook reference** folder and show the completion and failure
+request bodies without pressing **Send**. They use the reserved `.invalid`
+domain so they cannot reach a real receiver.
+
+When an enabled Docsie webhook is subscribed to
+`airgappedbuild.updated`, Docsie sends the event after either `complete` or
+`failed`. The receiver checks `target.status`. Polling remains the authoritative
+fallback and requires no separate webhook configuration.
+
+See [`WEBHOOKS.md`](WEBHOOKS.md) before making security or delivery guarantees.
+
+## Recording safety
+
+- Hide Postman environment values before entering the key.
+- Never display `.env`, `api_key`, or `download_url`.
+- Do not commit `.artifacts/` or the downloaded ZIP.
+- The demo contains the public Docsie Help portal, not customer-private content.
+- Run `./scripts/cleanup.sh` when finished.

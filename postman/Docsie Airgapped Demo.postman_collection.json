@@ -1,160 +1,324 @@
 {
   "info": {
     "_postman_id": "75318df3-95d1-4856-a469-c71827e94ac0",
-    "name": "Docsie Air-Gapped Portal Demo",
-    "description": "Build, download, and verify a self-contained Docsie portal. Run the Cloud build API folder first, deploy the downloaded ZIP with the repository scripts, then run the Local offline proof folder. The collection never stores or prints the Docsie API key.",
+    "name": "Docsie Air-Gapped Production Demo",
+    "description": "Select or create a production Docsie air-gapped build, download the private ZIP, and verify its local runtime. The collection never stores a Docsie API key in shared data. Webhook items are non-routable payload references and should not be sent.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
     "type": "apikey",
     "apikey": [
-      {"key": "key", "value": "Authorization", "type": "string"},
-      {"key": "value", "value": "Api-Key {{api_key}}", "type": "string"},
-      {"key": "in", "value": "header", "type": "string"}
+      {
+        "key": "key",
+        "value": "Authorization",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "Api-Key {{api_key}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
     ]
   },
   "item": [
     {
-      "name": "Cloud build API",
-      "description": "Run these requests in order. In the Collection Runner, the status request polls every five seconds until the build completes. In the request builder, click Send on the status request again until status is complete.",
+      "name": "Production build API",
+      "description": "For a short demo run request 0, then requests 3 and 4. For a fresh export run requests 1 through 4. The Collection Runner can loop request 2 every five seconds until the build reaches a terminal status.",
       "item": [
         {
-          "name": "1. Create air-gapped build",
-          "description": "Queues the Celery-backed export job. A successful response stores the build ID in the selected Postman environment.",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Build was queued', function () { pm.response.to.have.status(201); });",
-                "const body = pm.response.json();",
-                "pm.test('Response contains a build ID', function () { pm.expect(body.id).to.be.a('string').and.not.empty; });",
-                "pm.environment.set('build_id', body.id);",
-                "pm.environment.set('build_status', body.status || 'pending');",
-                "pm.environment.set('poll_attempt', '0');"
-              ],
-              "type": "text/javascript"
+          "name": "0. Select latest completed build",
+          "description": "Lists builds newest first, selects the first completed build for the configured deployment, and stores its ID. This is the fastest recording path when a fresh export is not required.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Build list request succeeded', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "const builds = Array.isArray(body.results) ? body.results : [];",
+                  "const deploymentId = pm.environment.get('deployment_id');",
+                  "const latest = builds.find(function (build) { return build.deployment_id === deploymentId && build.status === 'complete'; });",
+                  "pm.test('A completed build exists for this deployment', function () { pm.expect(latest).to.exist; });",
+                  "if (latest) {",
+                  "  pm.environment.set('build_id', latest.id);",
+                  "  pm.environment.set('build_status', latest.status);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api_v2/003/airgapped_builds/?limit=100&offset=0"
+          }
+        },
+        {
+          "name": "1. Create fresh air-gapped build",
+          "description": "Queues the production Celery export. A successful response stores the new durable build ID.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Build was queued', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Response contains a build ID', function () { pm.expect(body.id).to.be.a('string').and.not.empty; });",
+                  "pm.environment.set('build_id', body.id);",
+                  "pm.environment.set('build_status', body.status || 'pending');",
+                  "pm.environment.set('poll_attempt', '0');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"deployment_id\": \"{{deployment_id}}\",\n  \"deployment_type\": \"portal\",\n  \"include_docker\": true,\n  \"include_helm\": true,\n  \"plugins\": [\"codehelpers\", \"lightbox\", \"meta\", \"scrollspy\", \"toprint\", \"darkmode\"]\n}",
-              "options": {"raw": {"language": "json"}}
+              "raw": "{\n  \"deployment_id\": \"{{deployment_id}}\",\n  \"deployment_type\": \"portal\",\n  \"include_docker\": true,\n  \"include_helm\": true,\n  \"plugins\": [\"codehelpers\", \"lightbox\", \"meta\", \"scrollspy\", \"toprint\", \"darkmode\", \"search\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/api_v2/003/airgapped_builds/"
           }
         },
         {
           "name": "2. Poll build status",
-          "description": "Returns pending, processing, complete, or failed. Collection Runner mode loops with a five-second pause and stops after 360 attempts.",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Status request succeeded', function () { pm.response.to.have.status(200); });",
-                "const body = pm.response.json();",
-                "const allowed = ['pending', 'processing', 'complete', 'failed'];",
-                "pm.test('Build has a known status', function () { pm.expect(allowed).to.include(body.status); });",
-                "pm.environment.set('build_status', body.status);",
-                "let attempt = Number(pm.environment.get('poll_attempt') || 0) + 1;",
-                "pm.environment.set('poll_attempt', String(attempt));",
-                "if (body.status === 'failed') {",
-                "  pm.test('Build completed successfully', function () { pm.expect.fail(body.error_message || 'Air-gapped build failed'); });",
-                "  pm.execution.setNextRequest(null);",
-                "} else if (body.status !== 'complete' && pm.info.iteration !== undefined) {",
-                "  pm.test('Polling stayed within the 30-minute limit', function () { pm.expect(attempt).to.be.below(361); });",
-                "  if (attempt < 361) {",
-                "    setTimeout(function () {}, 5000);",
-                "    pm.execution.setNextRequest(pm.info.requestName);",
-                "  } else {",
-                "    pm.execution.setNextRequest(null);",
-                "  }",
-                "}"
-              ],
-              "type": "text/javascript"
+          "description": "Returns pending, extracting, packaging, complete, or failed. Collection Runner mode loops with a five-second pause and stops after 360 attempts.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status request succeeded', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "const allowed = ['pending', 'extracting', 'packaging', 'complete', 'failed'];",
+                  "pm.test('Build has a known status', function () { pm.expect(allowed).to.include(body.status); });",
+                  "pm.environment.set('build_status', body.status);",
+                  "let attempt = Number(pm.environment.get('poll_attempt') || 0) + 1;",
+                  "pm.environment.set('poll_attempt', String(attempt));",
+                  "if (body.status === 'failed') {",
+                  "  pm.test('Build completed successfully', function () { pm.expect.fail(body.error_message || 'Air-gapped build failed'); });",
+                  "  pm.execution.setNextRequest(null);",
+                  "} else if (body.status !== 'complete' && pm.info.iteration !== undefined) {",
+                  "  pm.test('Polling stayed within the 30-minute limit', function () { pm.expect(attempt).to.be.below(361); });",
+                  "  if (attempt < 361) {",
+                  "    setTimeout(function () { pm.execution.setNextRequest(pm.info.requestName); }, 5000);",
+                  "  } else {",
+                  "    pm.execution.setNextRequest(null);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
-          "request": {"method": "GET", "header": [], "url": "{{base_url}}/api_v2/003/airgapped_builds/{{build_id}}/"}
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api_v2/003/airgapped_builds/{{build_id}}/"
+          }
         },
         {
           "name": "3. Get private download URL",
-          "description": "Issues a short-lived private download URL after the build is complete. The URL is stored as a secret environment value.",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Download URL was issued', function () { pm.response.to.have.status(200); });",
-                "const body = pm.response.json();",
-                "pm.test('Response contains an HTTPS download URL', function () { pm.expect(body.download_url).to.match(/^https:\\/\\//); });",
-                "pm.environment.set('download_url', body.download_url);"
-              ],
-              "type": "text/javascript"
+          "description": "Requests a one-hour private download URL after the build is complete. The URL is stored as a secret environment value.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Download URL was issued', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Response contains an HTTPS download URL', function () { pm.expect(body.download_url).to.match(/^https:\\/\\//); });",
+                  "pm.environment.set('download_url', body.download_url);"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
-          "request": {"method": "GET", "header": [], "url": "{{base_url}}/api_v2/003/airgapped_builds/{{build_id}}/download/"}
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api_v2/003/airgapped_builds/{{build_id}}/download/"
+          }
         },
         {
           "name": "4. Download ZIP",
-          "description": "Uses the short-lived URL without Docsie API authentication. In the Postman desktop app choose Send and Download and save the file as .artifacts/airgapped-build.zip.",
-          "auth": {"type": "noauth"},
-          "request": {"method": "GET", "header": [], "url": "{{download_url}}"}
+          "description": "Uses the one-hour signed URL without a Docsie API header. In Postman Desktop choose Send and Download and save it as .artifacts/airgapped-build.zip.",
+          "auth": {
+            "type": "noauth"
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{download_url}}"
+          }
         }
       ]
     },
     {
       "name": "Local offline proof",
-      "description": "Run after ./scripts/deploy-offline.sh. These requests intentionally use localhost and do not send the Docsie API key.",
-      "auth": {"type": "noauth"},
+      "description": "Run after ./scripts/deploy-offline.sh. These requests use localhost with No Auth, so the Docsie API key is never sent to the offline portal.",
+      "auth": {
+        "type": "noauth"
+      },
       "item": [
         {
           "name": "5. Open local portal",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Local portal is available', function () { pm.response.to.have.status(200); });",
-                "pm.test('Portal declares offline mode', function () { pm.expect(pm.response.text()).to.include('window.__DOCSIE_OFFLINE__ = true'); });"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Local portal is available', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Portal declares offline mode', function () { pm.expect(pm.response.text()).to.include('window.__DOCSIE_OFFLINE__ = true'); });"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
-          "request": {"method": "GET", "header": [], "url": "{{local_url}}/"}
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{local_url}}/"
+          }
         },
         {
           "name": "6. Inspect offline manifest",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Manifest is available', function () { pm.response.to.have.status(200); });",
-                "const body = pm.response.json();",
-                "pm.test('Manifest matches the portal deployment', function () {",
-                "  pm.expect(body.deployment_id).to.eql(pm.environment.get('deployment_id'));",
-                "  pm.expect(body.deployment_type).to.eql('portal');",
-                "});"
-              ],
-              "type": "text/javascript"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Manifest is available', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Manifest matches the portal deployment', function () {",
+                  "  pm.expect(body.deployment_id).to.eql(pm.environment.get('deployment_id'));",
+                  "  pm.expect(body.deployment_type).to.eql('portal');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
-          "request": {"method": "GET", "header": [], "url": "{{local_url}}/manifest.json"}
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{local_url}}/manifest.json"
+          }
         },
         {
-          "name": "7. Inspect local search index",
-          "event": [{
-            "listen": "test",
-            "script": {
-              "exec": [
-                "pm.test('Search index is available', function () { pm.response.to.have.status(200); });",
-                "const body = pm.response.json();",
-                "pm.test('Search index contains documents', function () { pm.expect(body.documents).to.be.an('array').and.not.empty; });",
-                "pm.environment.set('search_document_count', String(body.documents.length));"
-              ],
-              "type": "text/javascript"
+          "name": "7. Inspect packaged deployment API",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Deployment snapshot is available', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Deployment snapshot is a JSON object', function () { pm.expect(pm.response.json()).to.be.an('object'); });"
+                ],
+                "type": "text/javascript"
+              }
             }
-          }],
-          "request": {"method": "GET", "header": [], "url": "{{local_url}}/search/index.json"}
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{local_url}}/api_v2/006/deployment/{{deployment_id}}/"
+          }
+        },
+        {
+          "name": "8. Inspect local search index",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Search index is available', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Search index contains documents', function () { pm.expect(body.documents).to.be.an('array').and.not.empty; });",
+                  "pm.environment.set('search_document_count', String(body.documents.length));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{local_url}}/search/index.json"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook reference",
+      "description": "Read-only reference bodies for the callback Docsie sends to a configured airgappedbuild.updated webhook. The URL uses the reserved .invalid domain; do not send these requests. Polling remains the Postman fallback.",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Completion callback payload (reference only)",
+          "description": "Docsie sends this shape when target.status is complete. target.download_url is a temporary secret. Do not press Send.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Air-gapped build updated\",\n  \"url\": \"https://app.docsie.io/api/v1/airgapped/build/airgap_example/\",\n  \"action\": \"airgappedbuild.updated\",\n  \"target\": {\n    \"id\": \"airgap_example\",\n    \"deployment_id\": \"deployment_EFk3AIigMh599HRk6\",\n    \"deployment_type\": \"portal\",\n    \"status\": \"complete\",\n    \"download_url\": \"https://temporary-signed-download.example/...\",\n    \"detail_url\": \"https://app.docsie.io/api_v2/003/airgapped_builds/airgap_example/\",\n    \"error_message\": \"\",\n    \"action\": \"airgappedbuild.updated\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{webhook_receiver_url}}"
+          }
+        },
+        {
+          "name": "Failure callback payload (reference only)",
+          "description": "The event name stays airgappedbuild.updated; target.status and target.error_message identify the failure. Do not press Send.",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"airgappedbuild.updated\",\n  \"target\": {\n    \"id\": \"airgap_example\",\n    \"deployment_id\": \"deployment_EFk3AIigMh599HRk6\",\n    \"status\": \"failed\",\n    \"error_message\": \"Build error summary\",\n    \"download_url\": null,\n    \"detail_url\": \"https://app.docsie.io/api_v2/003/airgapped_builds/airgap_example/\",\n    \"action\": \"airgappedbuild.updated\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{webhook_receiver_url}}"
+          }
         }
       ]
     }

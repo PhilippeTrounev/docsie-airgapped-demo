@@ -1,120 +1,168 @@
-# Docsie help portal: air-gapped deployment demo
+# Docsie Help: production air-gapped deployment demo
 
-This repository demonstrates the full supported flow for turning
-[help.docsie.io](https://help.docsie.io/) into a self-contained Docsie deployment:
+This public repository demonstrates the supported production flow for exporting
+[help.docsie.io](https://help.docsie.io/) as a self-contained on-premises or
+air-gapped deployment.
 
-1. Authenticate to the Docsie External API with an organization-scoped API key.
-2. Queue an asynchronous air-gapped build on Docsie staging.
-3. Poll the Celery-backed job until it completes.
-4. Download and inspect the private ZIP artifact.
-5. Apply narrowly scoped compatibility fixes for older staging artifacts.
-6. Build and start the included nginx container on an internal-only Docker network.
-7. Verify the reader, local search UI/index, and blocked outbound access.
+The production API creates a private ZIP containing the documentation snapshot,
+reader assets, API-shaped JSON, local search index, integrity checksums,
+`README.md`, `AGENTS.md`, a portable Python runtime, Docker configuration, a Helm
+chart, and opt-in update/rollback scripts.
 
-The public portal embeds deployment ID `deployment_EFk3AIigMh599HRk6`. The staging database
-contains the same deployment ID in the `docsie` organization, so the demo exercises the
-real portal export path without creating a production build.
+No API key, login, signed URL, or network connection is required after the ZIP
+has been downloaded and moved across the customer's secure transfer boundary.
+
+## What the demo proves
+
+1. An administrator creates an asynchronous production export through the
+   Docsie External API.
+2. The client can poll the job or receive `airgappedbuild.updated` when the job
+   reaches `complete` or `failed`.
+3. The client requests a one-hour private download URL and downloads the ZIP.
+4. The generated package verifies its own checksums, deployment snapshot, and
+   local search index before reporting that it is ready.
+5. The same generated package can run through its portable runtime, Docker, or
+   Helm without reaching Docsie during normal serving.
+
+The public portal deployment used by the demo is
+`deployment_EFk3AIigMh599HRk6`.
 
 ## Quick start
 
-Prerequisites: Bash, Python 3, `curl`, `jq`, `unzip`, and Docker.
+Prerequisites for the API demo: Bash, Python 3.9+, `curl`, `jq`, `unzip`, and a
+Docsie organization API key belonging to a workspace owner or administrator.
 
 ```bash
 cp .env.example .env
-# Put the dedicated staging token in DOCSIE_API_KEY. Never commit .env.
+# Set DOCSIE_API_KEY only in .env. The file is git-ignored.
 ./scripts/demo.sh
 ```
 
-When the script finishes, open <http://127.0.0.1:8088/>. The Docsie container is attached only
-to a Docker `--internal` network and has no route to the public internet. A separate fixed nginx
-gateway joins that private network and publishes the localhost ingress port, mirroring an
-on-prem ingress controller without granting egress to the documentation workload.
+The complete script runs create → poll → download → extract → start → verify.
+When it finishes, open <http://127.0.0.1:8091/> and search for `API key`.
 
-Generated state is written under `.artifacts/` and is intentionally git-ignored:
+Generated state is written under the git-ignored `.artifacts/` directory. The
+API key and short-lived signed download URL are never printed or committed.
 
-- `build.json`: initial API response
-- `status.json`: latest polled build state and manifest
-- `download.json`: short-lived presigned download response
-- `airgapped-build.zip`: private exported package
-- `site/`: extracted nginx/Docker/Helm package
+## Use the newest existing production build
 
-## Individual steps
+For a shorter recording, reuse the newest completed build for the Docsie Help
+deployment instead of creating another one:
 
 ```bash
-./scripts/trigger-build.sh
-./scripts/poll-build.sh
+./scripts/latest-build.sh
 ./scripts/download-build.sh
 ./scripts/deploy-offline.sh
 ./scripts/verify-offline.sh
 ```
 
-The API flow is:
+`latest-build.sh` uses the API's newest-first build list, filters it to the
+configured deployment and `complete` status, and stores that build ID for the
+download step.
+
+## Individual API steps
+
+```bash
+./scripts/trigger-build.sh
+./scripts/poll-build.sh
+./scripts/download-build.sh
+```
+
+The production API choreography is:
 
 ```text
+GET  /api_v2/003/airgapped_builds/?limit=100&offset=0
 POST /api_v2/003/airgapped_builds/
 GET  /api_v2/003/airgapped_builds/{build_id}/
 GET  /api_v2/003/airgapped_builds/{build_id}/download/
 ```
 
-Authentication uses `Authorization: Api-Key <token>`. Scripts never print the token.
-
-The staging image used on August 27, 2026 writes the reader options to the legacy
-`window.Docsie.config` property, which reader 3.0.0 does not consume during bootstrap.
-`prepare-package.sh` detects only that legacy form and rewrites it to the supported
-`window.Docsie.override.config` shape. Once the corresponding server packager fix is deployed,
-the compatibility step becomes a no-op.
-
-The same staging artifact contains a headless offline search engine but does not mount the
-reader's search control. The demo vendors `assets/docsie-search.js`, a modular reader plugin
-registered at `nav-plugin-bar`, when that UI marker is absent. It provides a visible search
-launcher, an accessible results dialog, `Ctrl/Cmd+K`, and Docsie-native result navigation while
-continuing to read only `/search/index.json`. If an encapsulated reader theme does not give the
-sidebar launcher a visible box, the plugin still exposes the same control at the top-right of
-the portal. The top-right control is always mounted so it remains discoverable across
-encapsulated reader themes. This compatibility replacement also becomes a no-op after the
-updated server plugin is deployed. The package nginx configuration revalidates this generated
-plugin instead of treating it as a permanently immutable reader asset, so a later package
-upgrade cannot leave visitors running a stale search bundle. The compatibility stage also
-derives a cache token from the search bundle, applies it to the reader script URL, and replaces
-the reader's internal plugin-loader token so an existing browser must load the upgraded code.
+Authentication uses `Authorization: Api-Key <token>`. Build status progresses
+through `pending`, `extracting`, and `packaging`, then terminates as `complete`
+or `failed`.
 
 ## Postman
 
 Import both files from `postman/`:
 
 - `Docsie Airgapped Demo.postman_collection.json`
-- `Docsie Airgapped Staging.postman_environment.json`
+- `Docsie Airgapped Production.postman_environment.json`
 
-Set the environment's secret `api_key` value locally. The create request captures `build_id`;
-the status and download requests reuse it. The collection also contains a no-auth local folder
-that verifies the portal, manifest, and search index after deployment. See
-[`POSTMAN_WALKTHROUGH.md`](POSTMAN_WALKTHROUGH.md) for the complete click-by-click flow.
+Set only the local/current value of the secret `api_key` variable. The
+collection includes:
 
-## Recording and customer handoff
+- selecting the newest completed build;
+- creating a new build;
+- polling through every real build status;
+- obtaining and downloading the private ZIP;
+- verifying the running portal, manifest, and local search index;
+- documented completion and failure webhook payload examples.
 
-[`RECORDING_WALKTHROUGH.md`](RECORDING_WALKTHROUGH.md) provides a 6-8 minute demo script and
-the exact claims supported by the verification. After the export ZIP exists, create a
-share-ready synthetic customer package with:
+See [`POSTMAN_WALKTHROUGH.md`](POSTMAN_WALKTHROUGH.md) for the recording sequence.
+
+## Webhook notification
+
+Yes—an enabled workspace- or organization-scoped webhook subscribed to
+`airgappedbuild.updated` is called when an air-gapped build reaches either
+`complete` or `failed`. Inspect `target.status` to distinguish the outcome. A
+completed callback includes `target.detail_url` and a one-hour
+`target.download_url`.
+
+Webhook configuration currently uses the authenticated Docsie enterprise
+webhook settings, not the External API key used by the collection. Polling
+remains the self-contained Postman fallback. See [`WEBHOOKS.md`](WEBHOOKS.md)
+for the exact payload and current delivery-security boundary.
+
+## Run the downloaded package
+
+The repository wrapper extracts the ZIP and delegates to the scripts generated
+by Docsie:
 
 ```bash
-./scripts/create-share-package.sh Eclypsium
+./scripts/deploy-offline.sh
+./scripts/verify-offline.sh
 ```
 
-The generated ZIP and SHA-256 sidecar are written to `.artifacts/share/`. The package adds the
-Postman examples, walkthroughs, and a customer-demo manifest to the prepared offline portal.
-It deliberately contains the public Docsie help portal rather than private Eclypsium content,
-and contains no Docsie API key or short-lived signed URL.
+The equivalent recipient commands inside the extracted ZIP are:
 
-## What “air-gapped” means in this demo
+```bash
+bash run.sh
+bash verify.sh
+bash stop.sh
+```
 
-The Docsie build worker needs network access while preparing the artifact so it can snapshot
-content, vendor reader assets, and upload the private ZIP. The resulting runtime does not.
-For a physically disconnected customer environment, transfer the ZIP and an approved nginx
-base image through the customer's secure media process, then build or import the image inside
-that environment. The included Helm chart can deploy the resulting image to an on-prem cluster.
+The repository uses port 8091 to avoid stale browser assets from older demo
+runs that used 8088. The portable server binds to loopback by default. The
+generated Dockerfile and `helm/` chart are also available inside
+`.artifacts/site/` for the customer's approved on-premises runtime.
 
-Online-only plugins such as feedback, recorder, AI agents, and secure-file URL signing are not
-included. Search is implemented by the packaged client-side plugin and index.
+## Updating an installed package
+
+When the update machine is temporarily allowed to reach Docsie, the recipient
+can run:
+
+```bash
+bash update.sh
+```
+
+The generated updater opens Docsie OAuth with PKCE, requests a complete fresh
+export, validates it, starts it, and only then switches the active release.
+Normal `run.sh`, `verify.sh`, and `stop.sh` operation stays offline. For a
+controlled Docker or Helm promotion use `bash update.sh --download-only`; use
+`bash update.sh --rollback` to return to the prior portable release.
+
+## Repository and artifact boundary
+
+Safe to commit:
+
+- scripts, Postman collection/environment template, walkthroughs, and examples;
+- public deployment ID and non-secret configuration.
+
+Never commit:
+
+- `.env` or an API/OAuth token;
+- `.artifacts/`, exported customer documentation, or private ZIPs;
+- `download_url` values, because they are temporary signed URLs.
 
 ## Cleanup
 
@@ -122,5 +170,6 @@ included. Search is implemented by the packaged client-side plugin and index.
 ./scripts/cleanup.sh
 ```
 
-This removes only the demo containers, image, internal Docker network, and `.artifacts/` contents.
-It does not revoke the Docsie API key or delete the server-side build record.
+This stops the extracted portable runtime and removes only this repository's
+`.artifacts/` directory. It does not revoke the API key or delete server-side
+build records.
